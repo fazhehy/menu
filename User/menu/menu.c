@@ -1,0 +1,290 @@
+//
+// Created by fazhehy on 2023/12/26.
+//
+
+#include "menu.h"
+#include "oled.h"
+#include "key.h"
+
+xPage pageBuffer[MAX_PAGE_NUM];
+uint8_t pageBufferPointer = 0;
+
+xpPage add_page(char * name, xpPage parentPage, uint8_t(*func)(uint8_t))
+{
+    if (pageBufferPointer >= MAX_PAGE_NUM)
+        return NULL;
+    xpPage subPage = pageBuffer+pageBufferPointer;
+    pageBufferPointer ++;
+
+    subPage->name = name;
+    subPage->parentPage = parentPage;
+    subPage->func = func;
+
+    if (parentPage == NULL)
+    {
+        subPage->lastPage = NULL;
+        subPage->nextPage = NULL;
+    }
+    else
+    {
+        if (parentPage->subPageHead == NULL)
+        {
+            subPage->lastPage = NULL;
+            parentPage->subPageHead = subPage;
+            parentPage->subPageTail = subPage;
+            parentPage->selectSubPage = subPage;
+            parentPage->show.showStartPage = subPage;
+        }
+        else
+        {
+            subPage->lastPage = parentPage->subPageTail;
+            parentPage->subPageTail->nextPage = subPage;
+            parentPage->subPageTail = subPage;
+        }
+    }
+    return subPage;
+}
+
+xpPage nowPage;
+uint8_t menu_move(uint8_t keyNum)
+{
+    if (nowPage->func != NULL)
+        keyNum = nowPage->func(keyNum);
+
+    uint8_t moveDir = 0;
+    if (keyNum == 1)
+    {
+        if (nowPage->selectSubPage->nextPage != NULL)
+        {
+            nowPage->selectSubPage = nowPage->selectSubPage->nextPage;
+            moveDir = 1;
+        }
+    }
+    else if (keyNum == 2)
+    {
+        if (nowPage->selectSubPage->lastPage != NULL)
+        {
+            nowPage->selectSubPage = nowPage->selectSubPage->lastPage;
+            moveDir = 2;
+        }
+    }
+    else if (keyNum == 3)
+    {
+        if (nowPage->selectSubPage->subPageHead != NULL)
+        {
+            nowPage = nowPage->selectSubPage;
+        }
+    }
+    else if (keyNum == 4)
+    {
+        if (nowPage->parentPage != NULL)
+        {
+            nowPage = nowPage->parentPage;
+        }
+    }
+    else if (keyNum == 0xff)
+    {
+        moveDir = 3;
+    }
+
+    return moveDir;
+}
+
+void menu_show(uint8_t moveDir)
+{
+    if (moveDir != 3)
+    {
+        oled_clear_buffer();
+        if (moveDir == 1)
+        {
+            if (nowPage->show.framePos >= MAX_SHOW_NUM-1)
+            {
+                xpPage pPage = nowPage->show.showStartPage;
+                uint8_t i = 0;
+                while (pPage != NULL)
+                {
+                    pPage = pPage->nextPage;
+                    i ++;
+                }
+                if (i >= MAX_SHOW_NUM-1)
+                    nowPage->show.showStartPage = nowPage->show.showStartPage->nextPage;
+            }
+            else
+            {
+                nowPage->show.frameX = 0;
+                nowPage->show.frameY += 12;
+                nowPage->show.framePos ++;
+            }
+        }
+        else if (moveDir == 2)
+        {
+            if (nowPage->show.framePos == 0)
+            {
+                if (nowPage->show.showStartPage->lastPage != NULL)
+                    nowPage->show.showStartPage = nowPage->show.showStartPage->lastPage;
+            }
+            else
+            {
+                nowPage->show.frameX = 0;
+                nowPage->show.frameY -= 12;
+                nowPage->show.framePos --;
+            }
+        }
+        nowPage->show.frameLen = strlen(nowPage->selectSubPage->name)*6+4;
+        xpPage showSubPage = nowPage->show.showStartPage;
+        oled_show_string(0, 0, nowPage->name);
+        uint8_t i = 1;
+        while (i < MAX_SHOW_NUM+1)
+        {
+            oled_show_string(1, i*12, showSubPage->name);
+            if (showSubPage->nextPage == NULL)
+                break;
+            showSubPage = showSubPage->nextPage;
+            i ++;
+        }
+        if (nowPage->show.frameY < 12)
+            nowPage->show.frameY = 12;
+        oled_draw_fill_round_rect_xor(nowPage->show.frameX, nowPage->show.frameY-2, nowPage->show.frameLen, 12, 3);
+        oled_update_screen();
+    }
+}
+
+uint8_t frameX = 0, frameY = 12, frameLen;
+void menu_show_animation(uint8_t moveDir)
+{
+    static uint8_t animation_process = 0;
+    static uint8_t animation_flag = 0;
+    if (moveDir != 3)
+    {
+        oled_clear_buffer();
+        if (moveDir == 1)
+        {
+            if (nowPage->show.framePos >= MAX_SHOW_NUM-1)
+            {
+                xpPage pPage = nowPage->show.showStartPage;
+                uint8_t i = 0;
+                while (pPage != NULL)
+                {
+                    pPage = pPage->nextPage;
+                    i ++;
+                }
+                if (i >= MAX_SHOW_NUM-1)
+                    nowPage->show.showStartPage = nowPage->show.showStartPage->nextPage;
+            }
+            else
+            {
+                nowPage->show.frameX = 0;
+                nowPage->show.frameY += 12;
+                nowPage->show.framePos ++;
+            }
+        }
+        else if (moveDir == 2)
+        {
+            if (nowPage->show.framePos == 0)
+            {
+                if (nowPage->show.showStartPage->lastPage != NULL)
+                    nowPage->show.showStartPage = nowPage->show.showStartPage->lastPage;
+            }
+            else
+            {
+                nowPage->show.frameX = 0;
+                nowPage->show.frameY -= 12;
+                nowPage->show.framePos --;
+            }
+        }
+        nowPage->show.frameLen = strlen(nowPage->selectSubPage->name)*6+4;
+        xpPage showSubPage = nowPage->show.showStartPage;
+        oled_show_string(0, 0, nowPage->name);
+        uint8_t i = 1;
+        while (i < MAX_SHOW_NUM+1)
+        {
+            oled_show_string(1, i*12, showSubPage->name);
+            if (showSubPage->nextPage == NULL)
+                break;
+            showSubPage = showSubPage->nextPage;
+            i ++;
+        }
+        if (nowPage->show.frameY < 12)
+            nowPage->show.frameY = 12;
+        if (frameY < nowPage->show.frameY)
+        {
+            animation_flag = 1;
+        }
+        if (frameY > nowPage->show.frameY)
+        {
+            animation_flag = 2;
+        }
+        if (animation_flag == 1)
+        {
+            if (frameY != nowPage->show.frameY)
+                frameY += 1;
+            else
+                animation_flag = 0;
+        }
+        else if (animation_flag == 2)
+        {
+            if (frameY != nowPage->show.frameY)
+                frameY -= 1;
+            else
+                animation_flag = 0;
+        }
+        oled_draw_fill_round_rect_xor(frameX, frameY-2, nowPage->show.frameLen, 12, 3);
+        oled_update_screen();
+        HAL_Delay(1);
+    }
+}
+
+void menu_task()
+{
+    uint8_t keyNum = get_key_num();
+    uint8_t moveDir = menu_move(keyNum);
+    menu_show_animation(moveDir);
+}
+
+void menu_init()
+{
+    xpPage MainPage = add_page("Main Page", NULL, NULL);
+    xpPage page1 = add_page("1-1", MainPage, NULL);
+    xpPage page1page1 = add_page("1-1-1", page1, NULL);
+    xpPage page1page1page1 = add_page("1-1-1-1", page1page1, NULL);
+    xpPage page1page1page1page1 = add_page("1-1-1-1-1", page1page1page1, NULL);
+    xpPage page1page1page1page1page1 = add_page("1-1-1-1-1-1", page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-1-1", page1page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-1-2", page1page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-1-3", page1page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-1-4", page1page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-1-5", page1page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-1-6", page1page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-2", page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-3", page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-4", page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-5", page1page1page1page1, NULL);
+    add_page("1-1-1-1-1-6", page1page1page1page1, NULL);
+    add_page("1-1-1-1-2", page1page1page1, NULL);
+    add_page("1-1-1-1-3", page1page1page1, NULL);
+    add_page("1-1-1-1-4", page1page1page1, NULL);
+    add_page("1-1-1-1-5", page1page1page1, NULL);
+    add_page("1-1-1-1-6", page1page1page1, NULL);
+    add_page("1-1-1-2", page1page1, NULL);
+    add_page("1-1-1-3", page1page1, NULL);
+    add_page("1-1-1-4", page1page1, NULL);
+    add_page("1-1-1-5", page1page1, NULL);
+    add_page("1-1-1-6", page1page1, NULL);
+    add_page("1-1-2", page1, NULL);
+    add_page("1-1-3", page1, NULL);
+    xpPage page2 = add_page("1-2", MainPage, NULL);
+    add_page("2-1-1", page2, NULL);
+    add_page("2-1-2", page2, NULL);
+    add_page("2-1-3", page2, NULL);
+    xpPage page3 = add_page("1-3", MainPage, NULL);
+    add_page("3-1-1", page3, NULL);
+    add_page("3-1-2", page3, NULL);
+    add_page("3-1-3", page3, NULL);
+    xpPage page4 = add_page("1-4", MainPage, NULL);
+    add_page("4-1-1", page4, NULL);
+    add_page("4-1-2", page4, NULL);
+    add_page("4-1-3", page4, NULL);
+    xpPage page5 = add_page("1-5", MainPage, NULL);
+    nowPage = MainPage;
+    frameLen = strlen(nowPage->selectSubPage->name)*6+4;
+}
